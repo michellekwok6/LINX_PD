@@ -1,0 +1,64 @@
+name: Sync main and samples branches
+
+on:
+  push:
+    branches:
+      - main
+
+# Add permission to allow pushing changes
+permissions:
+  contents: write
+
+jobs:
+  sync-branches:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v3
+        with:
+          fetch-depth: 0
+
+      - name: Configure Git
+        run: |
+          git config user.name github-actions
+          git config user.email github-actions@github.com
+
+      - name: Sync main to samples
+        run: |
+          # Ensure we're on main and it's up to date
+          git checkout main
+          git pull origin main
+
+          # Checkout samples
+          git checkout samples
+          git pull origin samples
+
+          # Create a temporary branch from samples
+          git checkout -b temp-sync-branch
+
+          # Merge main into the temporary branch
+          git merge -X theirs --no-commit origin/main
+
+          # Restore scripts/samples from samples branch
+          git checkout samples -- scripts/samples
+
+          # Restore .github/workflows from samples branch to avoid workflow changes
+          git checkout samples -- .github/workflows
+
+          # Check if there are any changes
+          if git diff --staged --quiet && git diff --quiet; then
+            echo "No changes to sync"
+            exit 0
+          fi
+
+          # Commit changes if any
+          git commit -m "Sync samples with main, preserving scripts/samples and workflows directories"
+
+          # Push changes to samples branch
+          git push origin temp-sync-branch:samples
+
+      - name: Cleanup
+        if: always()
+        run: |
+          git checkout main
+          git branch -D temp-sync-branch || true
