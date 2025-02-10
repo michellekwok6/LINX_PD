@@ -1,3 +1,4 @@
+import jax
 import jax.numpy as jnp 
 import equinox as eqx
 from numpy import loadtxt
@@ -386,10 +387,11 @@ class decay_model(pd_rxns):
         #injection energy: mass/2
         self.E0 = mass/2
         
-        self.pd_tables = self.get_pdi_grids()
+        #self.pd_tables = self.get_pdi_grids()
+        self.pd_tables = jnp.zeros((3, 17))
         self.temp = self.pd_tables[0]/kB
 
-        super(decay_model, self).__init__(self, self.pd_tables)
+        super().__init__(self.pd_tables)
 
     @eqx.filter_jit
     def get_scale_factor(self, T):
@@ -568,7 +570,7 @@ class decay_model(pd_rxns):
         #gets the list of all monochromatic sources
         return [self.S_photon_cont, self.S_electron_cont, self.S_electron_cont]
 
-
+    @eqx.filter_jit
     def pdi_rates(self, T):
         """Return photon disintegration rates
 
@@ -585,27 +587,33 @@ class decay_model(pd_rxns):
 
         EC = me**2/(22 * T)
         Emax = jnp.minimum(self.E0, E_EC_max*EC)
-        pdi_rates = {key: approx_zero for key in E_th.keys()}
+        #pdi_rates = {key: approx_zero for key in E_th.keys()}
+        Eth_list = jnp.array(list(E_th.values()))
         sp = self.spec.get_spectrum(self.E0, self.get_source_0(), self.get_source_cont(), T)
 
         rate_photon_E0 = self.spec.total_rate_photon(self.E0, T)
 
-        def F_s(log_E, i):
+        def F_s(log_E):
             E = jnp.exp(log_E)
             #return jnp.interp(E, sp[0], sp[1]) * E * self.get_cross_section(E)[i]
-            return jnp.exp(jnp.interp(jnp.log(E), jnp.log(sp[0]), jnp.log(sp[1]))) * E * self.get_cross_section(E)[i]
+            return jnp.exp(jnp.interp(jnp.log(E), jnp.log(sp[0]), jnp.log(sp[1]))) * E * self.get_cross_section(E)
         
+        pdi_rates = jnp.zeros(17)
+        #pdi_rates = jnp.select([Emax > Eth_list],[jax.vmap(quadgk, in_axes=(None,0, None, None, None, None ))(F_s, [jnp.log(Eth_list), jnp.full_like(Eth_list, jnp.log(Emax))], (), False, 0, eps)])
+        pdi_rates = jax.vmap(quadgk, in_axes=(None,0, None, None, None, None ))(F_s, [jnp.log(Eth_list), jnp.full_like(Eth_list, jnp.log(Emax))], (), False, 0, eps)
+        """
         for i, rkey in enumerate(E_th.keys()):
 
             I_dt = self.S_photon_0(T) * self.get_cross_section(self.E0)[i]/rate_photon_E0
             pdi_rates[rkey] = I_dt
-
+            
             if Emax > E_th[rkey]:
                 log_Emin, log_Emax = jnp.log(E_th[rkey]), jnp.log(Emax)
                 I_Fs = quadgk(F_s, [log_Emin, log_Emax], epsrel=eps, epsabs=0, args=(i, ))
                 pdi_rates[rkey] += I_Fs[0]
 
             pdi_rates[rkey] = jnp.maximum(pdi_rates[rkey], approx_zero)
+        """
 
         return pdi_rates
     
@@ -623,13 +631,16 @@ class decay_model(pd_rxns):
         #logspaced temperature grid
         Tr = jnp.logspace(jnp.log10(Tmin), jnp.log10(Tmax), 3)
 
-        rates = []
-
+        #rates = []
+        grid = Tr
         for Ti in Tr:
             rates_at_i = self.pdi_rates(Ti)
-            rates.append(jnp.array(list(rates_at_i.values())))
-        rates = jnp.transpose(jnp.array(rates))
+            #rates.append(jnp.array(list(rates_at_i.values())))
+            #rates.append(rates_at_i)
+            grid = jnp.vstack(grid, rates_at_i)
+        #rates = jnp.transpose(jnp.array(rates))
 
-        return jnp.vstack([Tr, rates])
+        #return jnp.vstack([Tr, rates])
+        return grid
     
         

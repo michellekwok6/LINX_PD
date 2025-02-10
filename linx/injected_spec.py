@@ -3,10 +3,39 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.integrate import trapezoid as trapz
 from scipy.integrate import dblquad, quad
+from functools import cache, wraps
 from linx.const import aFS, me, eta0, Emin, Ephb_T_max, NE_pd, NE_min, eps, approx_zero
 from linx.special_funcs import zeta_3
 from quadax import quadgk
 import time
+
+def cached(f):
+    # Define the cache as a dictionary
+    cache = {}
+    Tc = {"_": -1.}
+
+    # Define the wrapper function
+    @wraps(f)
+    def f_cached(*args):
+        T     = args[-1]
+        # Drop the first argument 'self'
+        # ! only for member functions !
+        pargs = args[1:]
+
+        # For each new temperature,
+        # clear the cache and start over
+        if T != Tc["_"]:
+            Tc["_"] = T
+            cache.clear()
+
+        if pargs not in cache:
+            cache[pargs] = f(*args)
+
+        return cache[pargs]
+
+    return f_cached
+  
+
 
 #Abundances at the end of BBN given relative to baryons ie Y_N = n_N/n_b
 acro_Y = {
@@ -43,6 +72,7 @@ class InjectedSpectrum(eqx.Module):
     #Photon Rates#
     ##############
 
+    @cache
     @eqx.filter_jit
     def dphoton_pair_prod_rate(self, E, T):
         """
@@ -188,7 +218,10 @@ class InjectedSpectrum(eqx.Module):
         -------
         Gamma_photon (MeV)
         """
+        #if (type(E) == float) or (type(E) == int):
         return self.dphoton_pair_prod_rate(E, T) + self.photon_photon_scattering_rate(E, T) + self.bethe_heitler_pair_prod_rate(E, T) + self.compton_scattering_rate(E, T)
+        #else:
+        #    return jax.vmap(self.dphoton_pair_prod_rate, in_axes= (0, 0))(E, T) + self.photon_photon_scattering_rate(E, T) + self.bethe_heitler_pair_prod_rate(E, T) + self.compton_scattering_rate(E, T)
     
     
     ################
@@ -236,6 +269,7 @@ class InjectedSpectrum(eqx.Module):
         else:
             return jnp.pi* (aFS**2)/(me) * thermal_electron(T)/Ep**2 * (Ep/E + E/Ep +(me/E - me/Ep)**2 - 2 * me * (1/E - 1/Ep))
     '''
+    #@cache
     @eqx.filter_jit 
     def inverse_compton_kernel_photon(self, E, T, Ep):
         """
@@ -302,6 +336,7 @@ class InjectedSpectrum(eqx.Module):
     #Lepton Rates#
     ##############
     
+    @cache
     @eqx.filter_jit 
     def inverse_compton_rate(self, E, T):
         """ 
@@ -346,8 +381,11 @@ class InjectedSpectrum(eqx.Module):
         """
         Returns the total interaction rate for leptons (MeV)
         """
-
+        #if (type(E) == float) or (type(E) == int):
         return self.inverse_compton_rate(E, T)
+        #else:   
+        #    return jax.vmap(self.inverse_compton_rate, in_axes=(0, 0))(E, T)  
+        
     
     ################
     #Lepton Kernels#
@@ -355,6 +393,7 @@ class InjectedSpectrum(eqx.Module):
 
     #has kernels for end state being leptons
 
+    #@cache
     @eqx.filter_jit 
     def dphoton_pair_prod_kernel(self, E, T, Ep):
         """Eq B.6 in Hufnagel 2018
@@ -433,7 +472,8 @@ class InjectedSpectrum(eqx.Module):
         #in paper it says only electron but I dont see why it wouldnt also happen with positrons
         #Code has it for both so probably a typo
         return self.compton_scattering_kernel_photon(Ep + me - E, T, Ep)
-
+    
+    #@cache
     @eqx.filter_jit
     def inverse_compton_kernel_lepton(self, E, T, Ep):
 
@@ -557,7 +597,8 @@ class InjectedSpectrum(eqx.Module):
         else:
             raise ValueError("Invalid reaction type")
         """
-        
+        if (type(E) != float) and (type(E) != int):
+            T = jnp.full_like(E, T)
         return jnp.select([X == 0, X == 1, X == 2], [self.total_rate_photon(E, T), self.total_lepton_rate(E, T), self.total_lepton_rate(E, T)])
         
     @eqx.filter_jit
@@ -635,6 +676,7 @@ class InjectedSpectrum(eqx.Module):
         t1 = time.time()
         #ii, jj = jnp.meshgrid(X_grid, E_grid, indexing='ij')
         #R = jnp.reshape(jax.vmap(self.rate_x, in_axes=(0, 0, None))(ii.flatten(), jj.flatten(), T), (N_X, NE))
+        #R = jnp.reshape(self.rate_x(ii.flatten(), jj.flatten(), T), (N_X, NE))
         R = jnp.array([[self.rate_x(X, E, T) for E in E_grid] for X in X_grid])
         #R = jnp.array([self.rate_x(X_grid, E, T) for E in E_grid])
 
@@ -947,3 +989,4 @@ def solve_cascade_equation(E_grid, R, K, S0, SC, T):
     sol = sol.at[1:N_X+1, :].set(F_grid)
 
     return sol
+
