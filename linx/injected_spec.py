@@ -3,7 +3,7 @@ import jax
 import jax.numpy as jnp
 from jax.scipy.integrate import trapezoid as trapz
 from scipy.integrate import dblquad, quad
-from functools import cache, wraps
+from functools import cache, wraps, partial
 from linx.const import aFS, me, eta0, Emin, Ephb_T_max, NE_pd, NE_min, eps, approx_zero
 from linx.special_funcs import zeta_3
 from quadax import quadgk
@@ -72,12 +72,11 @@ class InjectedSpectrum(eqx.Module):
     #Photon Rates#
     ##############
 
-    @cache
+    #@cache
     @eqx.filter_jit
+    #@partial(eqx.filter_jit, static_argnums=(1,))
     def dphoton_pair_prod_rate(self, E, T):
         """
-        TODO: make all these integral compatible with jax
-
         Double photon pair production. 
         From equation B.6 in Hufnagel 2018
 
@@ -336,8 +335,9 @@ class InjectedSpectrum(eqx.Module):
     #Lepton Rates#
     ##############
     
-    @cache
-    @eqx.filter_jit 
+    #@cache
+    @eqx.filter_jit
+    #@partial(eqx.filter_jit, static_argnums=(1,))
     def inverse_compton_rate(self, E, T):
         """ 
         Inverse Compton Scattering Rate Eq. B.24 in Hufnagel 2018
@@ -474,6 +474,7 @@ class InjectedSpectrum(eqx.Module):
         return self.compton_scattering_kernel_photon(Ep + me - E, T, Ep)
     
     #@cache
+    #@partial(eqx.filter_jit, static_argnums=(1,))
     @eqx.filter_jit
     def inverse_compton_kernel_lepton(self, E, T, Ep):
 
@@ -662,7 +663,7 @@ class InjectedSpectrum(eqx.Module):
         #number of grid points per decade energy so it does not fall below the min
         NE = jnp.array(jnp.log10(E0/Emin)*NE_pd, int)
         NE = jnp.maximum(NE, NE_min)
-        NE = 5
+        NE = 70
 
         #number of species
         N_X = 3

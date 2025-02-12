@@ -101,7 +101,7 @@ class AbundanceModel(eqx.Module):
         Y_i=None, T_start=None, T_end=None, sampling_nTOp=150, 
         rtol=1e-6, atol=1e-9, dtmax = None, solver=Kvaerno3(),
         max_steps=4096,
-        save_history=False, pd_added=False
+        save_history=False
     ):
         """
         Calculate BBN abundance. 
@@ -263,7 +263,7 @@ class AbundanceModel(eqx.Module):
             t0=t_start, t1=t_end, dt0=None, y0=Y_i, 
             args = (
                 a_vec, t_vec, T_g_vec, T_interval_nTOp, nTOp_frwrd, 
-                nTOp_bkwrd, eta_fac, tau_n_fac, nuclear_rates_q, pd_added
+                nTOp_bkwrd, eta_fac, tau_n_fac, nuclear_rates_q
             ), saveat=saveat, stepsize_controller = PIDController(
                 rtol=rtol, atol=atol, dtmax = dtmax
             ), 
@@ -437,7 +437,6 @@ class AbundanceModel(eqx.Module):
         eta_fac = args[6]
         tau_n_fac = args[7] 
         nuclear_rates_q = args[8]
-        pd_added = args[9]
         
         a_in  = a_vec_in[0]
         a_fin = a_vec_in[-1]
@@ -460,7 +459,7 @@ class AbundanceModel(eqx.Module):
         dY = self.nuclear_net(
             Y, T_t, rhoBBN, T_interval_in, nTOp_frwrd_vec_in,
             nTOp_bkwrd_vec_in, tau_n_fac=tau_n_fac, 
-            nuclear_rates_q=nuclear_rates_q, pd_added=pd_added
+            nuclear_rates_q=nuclear_rates_q
         )
 
         return dY

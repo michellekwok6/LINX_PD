@@ -81,6 +81,7 @@ class NuclearRates(eqx.Module):
  
         self.interp_type = interp_type
         self.max_i_species = max_i_species
+        self.pd_model = pd_model
 
         if reactions is not None: 
 
@@ -94,7 +95,7 @@ class NuclearRates(eqx.Module):
 
         else: 
 
-            self.reactions = self.populate(nuclear_net, pd_model)
+            self.reactions = self.populate(nuclear_net)
 
             if nuclear_net[:3] == 'key': 
  
@@ -278,7 +279,7 @@ class NuclearRates(eqx.Module):
 
         return dYdt_vec
     
-    def populate(self, network, pd_model): 
+    def populate(self, network): 
         """
         Populate the nuclear rates. 
 
@@ -868,7 +869,7 @@ class NuclearRates(eqx.Module):
       
         if self.pd_model != None:  
             other_rxns_dict = {}
-            
+
             PD_FUNCS = self.pd_model
 
             other_rxns_dict['dgpn'] = Reaction(

@@ -63,108 +63,108 @@ class pd_rxns(eqx.Module): #try to use this to subclass the other models
         #self.pd_tables = jnp.array(loadtxt(f"{self.filename}"))
         #self.pd_tables = pdi_grid
         #self.temp = pdi_grid[0]/kB
-        self.temp = pdi_grid[0]
+        self.temp = pdi_grid[0]/kB
         self.pd_tables = pdi_grid
         
     #d + g -> n + p
     def dgnp_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB #change from MeV to Kelvin
+        temp = self.temp #change from MeV to Kelvin
         rate = self.pd_tables[1]/hbar
         #return jnp.interp(T, temp, rate, left=0, right=0)
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #t + g -> n + d
     def tgnd_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[2]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #t + g -> n + p + n
     def tgnpn_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[3]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #He3 + g -> p + d
     def He3gpd_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[4]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #He3 + g -> n + p + p
     def He3gnpp_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[5]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #He4 + g -> p + t
     def He4gpt_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[6]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #He4 + g -> n + He3
     def He4gnHe3_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[7]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1]) 
 
     #He4 + g -> d + d
     def He4gdd_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[8]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #He4 + g -> n + p + d
     def He4gnpd_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[9]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
     #Li6 + g -> n + p + He4
     def Li6gnpHe4_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[10]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Li6 + g -> X these are to Li5 which almost immediately decay
     def Li6gX_frwrd_rate(self, T, p):
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[11]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Li7 + g -> t + He4
     def Li7gtHe4_frwrd_rate(self, T, p):  
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[12]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Li7 + g -> n + Li6
     def Li7gnLi6_frwrd_rate(self, T, p):  
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[13]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Li7 + g -> n + n + p + He4
     def Li7gnnpHe4_frwrd_rate(self, T, p):  
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[14]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Be7 + g -> He3 + He4
     def Be7gHe3He4_frwrd_rate(self, T, p):    
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[15]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Be7 + g -> p + Li6
     def Be7gpLi6_frwrd_rate(self, T, p):    
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[16]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
 
     #Be7 + g -> p + p + n + He4
     def Be7gppnHe4_frwrd_rate(self, T, p):    
-        temp = self.pd_tables[0]/kB
+        temp = self.temp
         rate = self.pd_tables[17]/hbar
         return jnp.interp(T, temp, rate, left=rate[0], right=rate[-1])
     
@@ -303,6 +303,7 @@ class pd_rxns(eqx.Module): #try to use this to subclass the other models
         array
             Array of all cross sections and converts to mb to MeV^-2
         """
+        
         return jnp.real(jnp.array([self.dgnp_cross(E), 
                 self.tgnd_cross(E), 
                 self.tgnpn_cross(E), 
@@ -387,9 +388,9 @@ class decay_model(pd_rxns):
         #injection energy: mass/2
         self.E0 = mass/2
         
-        #self.pd_tables = self.get_pdi_grids()
-        self.pd_tables = jnp.zeros((3, 17))
-        self.temp = self.pd_tables[0]/kB
+        self.pd_tables = self.get_pdi_grids()
+        #self.pd_tables = jnp.zeros((3, 17))
+        #self.temp = self.pd_tables[0]/kB
 
         super().__init__(self.pd_tables)
 
@@ -570,7 +571,7 @@ class decay_model(pd_rxns):
         #gets the list of all monochromatic sources
         return [self.S_photon_cont, self.S_electron_cont, self.S_electron_cont]
 
-    @eqx.filter_jit
+    #@eqx.filter_jit
     def pdi_rates(self, T):
         """Return photon disintegration rates
 
@@ -593,14 +594,23 @@ class decay_model(pd_rxns):
 
         rate_photon_E0 = self.spec.total_rate_photon(self.E0, T)
 
-        def F_s(log_E):
+
+        @jax.jit
+        def F_s(log_E, i):
             E = jnp.exp(log_E)
             #return jnp.interp(E, sp[0], sp[1]) * E * self.get_cross_section(E)[i]
-            return jnp.exp(jnp.interp(jnp.log(E), jnp.log(sp[0]), jnp.log(sp[1]))) * E * self.get_cross_section(E)
-        
-        pdi_rates = jnp.zeros(17)
+            return jnp.exp(jnp.interp(jnp.log(E), jnp.log(sp[0]), jnp.log(sp[1]))) * E * self.get_cross_section(E)[i]
+
+        I_dt = self.S_photon_0(T) * self.get_cross_section(self.E0)/rate_photon_E0
+
+        #pdi_rates = I_dt
         #pdi_rates = jnp.select([Emax > Eth_list],[jax.vmap(quadgk, in_axes=(None,0, None, None, None, None ))(F_s, [jnp.log(Eth_list), jnp.full_like(Eth_list, jnp.log(Emax))], (), False, 0, eps)])
-        pdi_rates = jax.vmap(quadgk, in_axes=(None,0, None, None, None, None ))(F_s, [jnp.log(Eth_list), jnp.full_like(Eth_list, jnp.log(Emax))], (), False, 0, eps)
+        #pdi_rates = jnp.select([Emax > Eth_list], [jax.vmap(quadgk, in_axes=(None,0, None, None, None, None ))(F_s, jnp.array([jnp.log(Eth_list), jnp.full_like(Eth_list, jnp.log(Emax))]), (), False, 0, eps)[0]], default = I_dt)
+        pdi_rates = jax.vmap(quadgk, in_axes=(None,1, 0, None, None, None ))(F_s, jnp.array([jnp.log(Eth_list), jnp.full_like(Eth_list, jnp.log(Emax))]), (jnp.arange(17), ), False, 0, eps)
+        #pdi_rates = jax.lax.fori_loop(0, 18, lambda i: quadgk(F_s, [jnp.log(Eth_list[i]), jnp.log(Emax)], epsrel=eps, epsabs=0, args=(jnp.arange(17), ))[0])
+        pdi_rates = jnp.select([Emax > Eth_list], [pdi_rates[0] + I_dt], default = I_dt)
+        pdi_rates = jnp.maximum(pdi_rates, approx_zero)
+
         """
         for i, rkey in enumerate(E_th.keys()):
 
@@ -617,6 +627,7 @@ class decay_model(pd_rxns):
 
         return pdi_rates
     
+    #@eqx.filter_jit
     def get_pdi_grids(self):
         """Return photon disintegration rates on a grid of temperatures
         
@@ -629,18 +640,19 @@ class decay_model(pd_rxns):
         NT = int(jnp.log10(Tmax/Tmin)*NT_pd)
 
         #logspaced temperature grid
-        Tr = jnp.logspace(jnp.log10(Tmin), jnp.log10(Tmax), 3)
+        Tr = jnp.logspace(jnp.log10(Tmin), jnp.log10(Tmax), 50)
 
         #rates = []
-        grid = Tr
-        for Ti in Tr:
-            rates_at_i = self.pdi_rates(Ti)
+        #grid = Tr
+        #for Ti in Tr:
+        #    rates_at_i = self.pdi_rates(Ti)
+        grid = jax.vmap(self.pdi_rates)(Tr)
             #rates.append(jnp.array(list(rates_at_i.values())))
             #rates.append(rates_at_i)
-            grid = jnp.vstack(grid, rates_at_i)
+        #    grid = jnp.vstack(grid, rates_at_i)
         #rates = jnp.transpose(jnp.array(rates))
 
-        #return jnp.vstack([Tr, rates])
-        return grid
+        return jnp.vstack([Tr, jnp.transpose(grid)])
+        #return grid
     
         
