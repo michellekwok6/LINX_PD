@@ -6,7 +6,7 @@ from scipy.integrate import dblquad, quad
 from functools import cache, wraps, partial
 from linx.const import aFS, me, eta0, Emin, Ephb_T_max, NE_pd, NE_min, eps, approx_zero
 from linx.special_funcs import zeta_3
-from quadax import quadgk
+from quadax import quadgk, quadcc
 import time
 
 def cached(f):
@@ -66,6 +66,7 @@ class InjectedSpectrum(eqx.Module):
     """
     def __init__(self):
         pass
+        
 
 
     ##############
@@ -73,8 +74,8 @@ class InjectedSpectrum(eqx.Module):
     ##############
 
     #@cache
-    @eqx.filter_jit
     #@partial(eqx.filter_jit, static_argnums=(1,))
+    @eqx.filter_jit
     def dphoton_pair_prod_rate(self, E, T):
         """
         Double photon pair production. 
@@ -101,6 +102,7 @@ class InjectedSpectrum(eqx.Module):
         #    return 0
 
         #rewritten to be with quadgk, since it is compatible with jax
+        '''       
         @jax.jit
         def inside_int(s):
             s = jnp.exp(s)
@@ -111,6 +113,16 @@ class InjectedSpectrum(eqx.Module):
         @jax.jit
         def integral_of_inside(ep):
             return quadgk(inside_int, [jnp.log(4*me**2), jnp.log(4*E* ep)], epsrel = eps, epsabs=0)[0]
+        '''
+        @jax.jit
+        def integral_of_inside(ep):
+            s_log = jnp.linspace(jnp.log(4*me**2), jnp.log(4*E* ep), 200)
+            s = jnp.exp(s_log)
+            b = jnp.sqrt(1 - (4*me**2)/s)
+            dp_cross_section = jnp.pi * aFS**2 /(2*me**2) * (1-b**2) * ((3-b**4) * jnp.log((1+b)/(1-b)) - 2*b *(2-b**2))  
+
+            return jnp.trapezoid(dp_cross_section * s * s  , s_log)
+
 
         @jax.jit
         def outside_integral(ep, T):
@@ -138,7 +150,7 @@ class InjectedSpectrum(eqx.Module):
         #if E > (me**2)/(T): 
         #    return 0
         
-        #TODO:Look at the exponential decay. It's not anywhere where they originally derived it or in the paper?
+        #From Boltzmann?
         exp_fac = jnp.exp(-E*T/me**2)
 
         return 15568*(jnp.pi**3)/(3189375) * aFS**4 * me * (E/me)**3 * (T/me)**6 * exp_fac
@@ -336,8 +348,8 @@ class InjectedSpectrum(eqx.Module):
     ##############
     
     #@cache
-    @eqx.filter_jit
     #@partial(eqx.filter_jit, static_argnums=(1,))
+    @eqx.filter_jit
     def inverse_compton_rate(self, E, T):
         """ 
         Inverse Compton Scattering Rate Eq. B.24 in Hufnagel 2018
@@ -354,7 +366,7 @@ class InjectedSpectrum(eqx.Module):
         float
             Gamma^IC_e+- (MeV)
             
-        """
+        
 
         @jax.jit
         def inside_int(E_ph, E, ep):
@@ -363,7 +375,13 @@ class InjectedSpectrum(eqx.Module):
         @jax.jit
         def integral_of_inside(ep, E):
             return quadgk(inside_int, [ep, 4*ep*E**2 /(me**2 + 4*ep*E)], epsrel = eps, epsabs=0, args = (E, ep))[0]
+        """
 
+        @jax.jit
+        def integral_of_inside(ep, E):
+            s = jnp.linspace(ep, 4*ep*E**2 /(me**2 + 4*ep*E), 200)
+            return jnp.trapezoid(F_func(s, E, ep), s)
+            
         @jax.jit
         def outside_integral(ep, T, E):
             return integral_of_inside(ep, E) * f_thermal_photon_spec(ep, T)/ep
@@ -422,10 +440,10 @@ class InjectedSpectrum(eqx.Module):
         #    return 0
     
 
-        dpk = jnp.pi * aFS**2 * me**2 /(4*Ep**3)* quadgk(dfk_integrand, [jnp.log(ep_ll), jnp.log(ep_ul)], args=(E, Ep, T))[0]
+        dpk = jnp.pi * aFS**2 * me**2 /(4*Ep**3)* quadgk(dpk_integrand, [jnp.log(ep_ll), jnp.log(ep_ul)], args=(E, Ep, T))[0]
 
         return jnp.select([Ep < me**2 /(50*T), ep_ll >= ep_ul], [0, 0], default=dpk)
-        #return jnp.pi * aFS**2 * me**2 /(4*Ep**3)* quad(dfk_integrand, jnp.log(ep_ll), jnp.log(ep_ul), args=(E, Ep, T))[0]
+        #return jnp.pi * aFS**2 * me**2 /(4*Ep**3)* quad(dpk_integrand, jnp.log(ep_ll), jnp.log(ep_ul), args=(E, Ep, T))[0]
 
     @eqx.filter_jit 
     def bethe_heitler_pair_prod_kernel(self, E, T, Ep):
@@ -553,21 +571,17 @@ class InjectedSpectrum(eqx.Module):
         -------
         Sum of positron integration kernels (Dimensionless)
         
-
-        if X == 0:
-            return self.dphoton_pair_prod_kernel(E, T, Ep) + self.compton_scattering_kernel_electron(E, T, Ep) + self.bethe_heitler_pair_prod_kernel(E, T, Ep)
-        elif X == 1:
-            return 0
-        elif X == 2:
-            return self.inverse_compton_kernel_lepton(E, T, Ep)
-        else:
-            raise ValueError("Invalid reaction type")
         """
 
+        #Not enough thermal positrons for compton scattering
+        return jnp.select([X == 0, X == 1, X == 2], [self.dphoton_pair_prod_kernel(E, T, Ep)  + self.bethe_heitler_pair_prod_kernel(E, T, Ep), 
+                                                     0, 
+                                                     self.inverse_compton_kernel_lepton(E, T, Ep)])
+        '''
         return jnp.select([X == 0, X == 1, X == 2], [self.dphoton_pair_prod_kernel(E, T, Ep) + self.compton_scattering_kernel_electron(E, T, Ep) + self.bethe_heitler_pair_prod_kernel(E, T, Ep), 
                                                      0, 
                                                      self.inverse_compton_kernel_lepton(E, T, Ep)])
-        
+        '''
     @eqx.filter_jit
     def rate_x(self, X: int, E, T):
         """Returns rate for species type
@@ -598,6 +612,7 @@ class InjectedSpectrum(eqx.Module):
         else:
             raise ValueError("Invalid reaction type")
         """
+
         if (type(E) != float) and (type(E) != int):
             T = jnp.full_like(E, T)
         return jnp.select([X == 0, X == 1, X == 2], [self.total_rate_photon(E, T), self.total_lepton_rate(E, T), self.total_lepton_rate(E, T)])
@@ -624,20 +639,11 @@ class InjectedSpectrum(eqx.Module):
         -------
         float
             returns total kernel (dimensionless)
-        
-        if X == 0:
-            return self.total_kernel_photon(E, T, Ep, X_out)
-        if X == 1:
-            return self.total_kernel_electron(E, T, Ep, X_out)
-        if X == 2:
-            return self.total_kernel_positron(E, T, Ep, X_out)
-        else:
-            raise ValueError("Invalid reaction type")
         """
 
         return jnp.select([X == 0, X == 1, X == 2], [self.total_kernel_photon(E, T, Ep, X_out), self.total_kernel_electron(E, T, Ep, X_out), self.total_kernel_positron(E, T, Ep, X_out)])  
     
-    #@eqx.filter_jit
+    @eqx.filter_jit
     def get_spectrum(self, E0, S_0f, S_contf, T):
         """Generate on-thermal spectrum of injected particles
 
@@ -661,33 +667,44 @@ class InjectedSpectrum(eqx.Module):
 
 
         #number of grid points per decade energy so it does not fall below the min
-        NE = jnp.array(jnp.log10(E0/Emin)*NE_pd, int)
-        NE = jnp.maximum(NE, NE_min)
-        NE = 70
+        NE = jnp.maximum(jnp.array(jnp.log10(E0/Emin)*NE_pd, int), NE_min)
+        NE = 200
 
         #number of species
-        N_X = 3
+        NX = 3
 
         E_grid = jnp.logspace(jnp.log(Emin), jnp.log(E0), NE, base=jnp.e)
 
         # Generate the grid for the different species
-        X_grid = jnp.arange(N_X)
+        X_grid = jnp.arange(NX)
 
         #rate (MeV)
         t1 = time.time()
+
         #ii, jj = jnp.meshgrid(X_grid, E_grid, indexing='ij')
-        #R = jnp.reshape(jax.vmap(self.rate_x, in_axes=(0, 0, None))(ii.flatten(), jj.flatten(), T), (N_X, NE))
-        #R = jnp.reshape(self.rate_x(ii.flatten(), jj.flatten(), T), (N_X, NE))
-        R = jnp.array([[self.rate_x(X, E, T) for E in E_grid] for X in X_grid])
+        #R = jnp.reshape(jax.vmap(self.rate_x, in_axes=(0, 0, None))(ii.flatten(), jj.flatten(), T), (NX, NE))
+        #R = jnp.reshape(self.rate_x(ii.flatten(), jj.flatten(), T), (NX, NE))
+        #R = jnp.array([[self.rate_x(X, E, T) for E in E_grid] for X in X_grid])
         #R = jnp.array([self.rate_x(X_grid, E, T) for E in E_grid])
+        f1 = jax.vmap(self.rate_x, in_axes=(None, 0, None))
+        f2 = jax.vmap(f1, in_axes=(0, None, None))
+        R = f2(X_grid, E_grid, T)
 
         t2 = time.time()
         print("Rate time: ", t2-t1)
-
+        """
         ii, jj, kk, ll = jnp.meshgrid( X_grid, X_grid,E_grid, E_grid,indexing='ij')
         k = jnp.stack([ll, kk, jj, ii], axis=-1)
         k_true = jnp.array(k[:, :, :, :, 0] >= k[:, :, :, :, 1])
-        K = jnp.select([k_true], [jnp.reshape(jax.vmap(self.kernel_x, in_axes=(0, 0, 0, None, 0))(ii.flatten(), jj.flatten(), kk.flatten(), 0.01, ll.flatten()), (N_X, N_X, NE, NE))])
+        K = jnp.select([k_true], [jnp.reshape(jax.vmap(self.kernel_x, in_axes=(0, 0, 0, None, 0))(ii.flatten(), jj.flatten(), kk.flatten(), T, ll.flatten()), (NX, NX, NE, NE))])
+        """
+        g1 = jax.vmap(self.kernel_x, in_axes=(None, None, None, None, 0))
+        g2 = jax.vmap(g1, in_axes=(None, None, 0, None, None))
+        g3 = jax.vmap(g2, in_axes=(None, 0, None, None, None))
+        g4 = jax.vmap(g3, in_axes=(0, None, None, None, None))
+
+        K = jnp.triu(g4(X_grid, X_grid, E_grid, T, E_grid))
+        
         t3 = time.time()
         
         print("Kernel time: ", t3-t2)
@@ -832,14 +849,15 @@ def dpr_integrand(s, ep, T):
 
 
 @jax.jit
-def dfk_integrand(ep, E, Ep, T):
+def dpk_integrand(ep, E, Ep, T):
     #Eq B.7 Hufnagel 2018
     ep = jnp.exp(ep)
 
     #check limits for valid G but shouldnt happen
-    '''
+    
     E_lim_plus = 0.5*(Ep + ep + (Ep - ep) * jnp.sqrt(1-me**2 /(Ep * ep)))
     E_lim_minus = 0.5*(Ep + ep - (Ep - ep) * jnp.sqrt(1-me**2 /(Ep * ep)))
+    '''   
     if not (me < E_lim_minus <= E <= E_lim_plus):
         return 0
     '''
@@ -849,7 +867,7 @@ def dfk_integrand(ep, E, Ep, T):
     term3 = 2 * (2*ep*(Ep + ep) -me**2) * (Ep + ep)**2 /(me**2 * E * (Ep + ep - E)) - 8* ep *(Ep + ep)/me**2
     G = term1 + term2 + term3
 
-    return f_thermal_photon_spec(ep, T)/ep**2 * G * ep
+    return jnp.select([(me<E_lim_minus) & (E_lim_minus <= E) & (E <= E_lim_plus)], [f_thermal_photon_spec(ep, T)/ep**2 * G * ep], default = 0)
 
 #Inverse Compton Scattering
 @jax.jit
@@ -929,16 +947,18 @@ def solve_cascade_equation(E_grid, R, K, S0, SC, T):
         Other columns are the spectrum for each species (each X)
     """
 
-    N_X = len(R)
+    NX = len(R)
     NE = len(E_grid)
 
+    """
+    
     dy = jnp.log(E_grid[-1]/Emin)/(NE-1)
 
     #create the grid to store the spectrums
-    F_grid = jnp.zeros((N_X, NE)) 
+    F_grid = jnp.zeros((NX, NE)) 
 
     #calculate the last row, which is important for trapezoidal rule
-    FX_E0 = jnp.array([SC[X,-1]/R[X,-1] + jnp.sum(K[X,:,-1,-1]*S0[:]/(R[:,-1]*R[X,-1])) for X in range(N_X)])
+    FX_E0 = jnp.array([SC[X,-1]/R[X,-1] + jnp.sum(K[X,:,-1,-1]*S0[:]/(R[:,-1]*R[X,-1])) for X in range(NX)])
 
     F_grid = set_spectra(F_grid, -1, FX_E0)
     i  = (NE - 1) - 1 # start at the second to last index, NE-2
@@ -948,22 +968,21 @@ def solve_cascade_equation(E_grid, R, K, S0, SC, T):
     
     #def body_func(i):
     while i >= 0: # Counting down
-        B = jnp.zeros( (N_X, N_X) )
-        a = jnp.zeros( (N_X,   ) )
+        B = jnp.zeros( (NX, NX) )
+        a = jnp.zeros( (NX,   ) )
 
-        I = jnp.identity(N_X)
+        I = jnp.identity(NX)
         # Calculate the matrix B and the vector a
-        for X in range(N_X):
+        for X in range(NX):
             # Calculate B, : <--> Xp
             B = B.at[X,:].set(-.5*dy*E_grid[i]*K[X,:,i,i] + R[X,i]*I[X,:])
-
             # Calculate a
             a = a.at[X].set(SC[X,i])
-            for Xp in range(N_X):
+            for Xp in range(NX):
                 a = a.at[X].add(K[X,Xp,i,-1]*S0[Xp]/R[Xp,-1] + .5*dy*E_grid[-1]*K[X,Xp,i,-1]*F_grid[Xp,-1])
                 for j in range(i+1, NE-1): # Goes from i+1 to NE-2
                     a = a.at[X].add(dy*E_grid[j]*K[X,Xp,i,j]*F_grid[Xp,j])
-
+                    #print(dy*E_grid[j]*K[X,Xp,i,j]*F_grid[Xp,j])
         # Solve the system of linear equations of the form BF = a
         F_grid = set_spectra(F_grid, i,
             jnp.linalg.solve(B, a)
@@ -973,21 +992,36 @@ def solve_cascade_equation(E_grid, R, K, S0, SC, T):
 
     #F_grid = jax.lax.while_loop(cond_func, body_func, (F_grid, (NE - 1) - 1))
 
-    approx_zero = 1e-200
     # Remove potential zeros
-    F_grid = F_grid.reshape( N_X*NE )
+    F_grid = F_grid.reshape( NX*NE )
     F_grid = F_grid.at[:].set(jnp.where(F_grid > approx_zero, F_grid, approx_zero))
     #for i, f in enumerate(F_grid):
         #if f < approx_zero:
         #    F_grid[i] = approx_zero
     #    F_grid.at[i].set(f < approx_zero, f, approx_zero)
-    F_grid = F_grid.reshape( (N_X, NE) )
+    F_grid = F_grid.reshape( (NX, NE) )
+    """
 
+    dy = jnp.log(E_grid[-1]/Emin)/(NE-1)
+
+    I_3310 = jnp.repeat(jnp.repeat(jnp.identity(NX), NE, axis=1), NE, axis=1).reshape((NX, NX, NE, NE))
+
+    B_diag = jnp.tril(jnp.triu(K/2*dy*E_grid + R[:, None, :, None]*I_3310))
+
+    B_last = -dy*E_grid[-1]*K[:, :, :, -1]/2
+    B_last = B_last.at[:, :, -1].set(0)
+
+    B = jnp.concatenate((K[:, :, :, :-1], B_last[:,:, :, None]), axis = 3)
+    B = (B_diag - dy*K*E_grid)
+    a = SC + jnp.einsum("ijk,j", K[:, :, :, -1], S0/R[:, -1])
+
+    F_grid = jnp.linalg.tensorsolve(B, a, axes =(1, 3))
+    F_grid = jnp.maximum(F_grid, approx_zero)
     # Define the output array...
-    sol = jnp.zeros( (N_X+1, NE) )
+    sol = jnp.zeros( (NX+1, NE) )
     # ...and fill it
     sol = sol.at[0     , :].set(E_grid)
-    sol = sol.at[1:N_X+1, :].set(F_grid)
+    sol = sol.at[1:NX+1, :].set(F_grid)
 
     return sol
 

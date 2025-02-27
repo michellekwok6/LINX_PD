@@ -60,9 +60,11 @@ class pd_rxns(eqx.Module): #try to use this to subclass the other models
         #self.tau = tau
         #self.n = n 
         #self.filename = f"../../acropolis/tables/{self.mass}_{self.tau}_{self.n}"
-        #self.pd_tables = jnp.array(loadtxt(f"{self.filename}"))
+        #filename = "../../acropolis/tables/50_10000.0_5e-05"
+        #pd_grid = jnp.array(loadtxt(f"{filename}"))
         #self.pd_tables = pdi_grid
         #self.temp = pdi_grid[0]/kB
+        
         self.temp = pdi_grid[0]/kB
         self.pd_tables = pdi_grid
         
@@ -376,6 +378,10 @@ class decay_model(pd_rxns):
         #self.rho_nu_vec = rho_nu_vec
         #self.rho_NP_vec = rho_NP_vec
         self.a_vec = a_vec
+
+        #injection energy: mass/2
+        self.E0 = mass/2
+        
         self.spec = InjectedSpectrum()
         if inject_temp == 0:
             self.inject_temp = self.get_temp(self.tau)
@@ -385,12 +391,12 @@ class decay_model(pd_rxns):
         #injection time
         self.inject_time = self.get_time(self.inject_temp)
 
-        #injection energy: mass/2
-        self.E0 = mass/2
         
-        self.pd_tables = self.get_pdi_grids()
-        #self.pd_tables = jnp.zeros((3, 17))
-        #self.temp = self.pd_tables[0]/kB
+        #self.pd_tables = self.get_pdi_grids()
+        self.pd_tables = jnp.zeros((3, 17))
+        self.temp = self.pd_tables[0]/kB
+        filename = "../../acropolis/tables/50_10000.0_5e-05"
+        self.pd_tables = jnp.array(loadtxt(f"{filename}"))
 
         super().__init__(self.pd_tables)
 
@@ -559,7 +565,7 @@ class decay_model(pd_rxns):
 
     @eqx.filter_jit
     def S_electron_cont(self, E, T):
-        return jnp.full_like(E, 1e-200)
+        return jnp.full_like(E, 0)
     
     @eqx.filter_jit
     def get_source_0(self):
@@ -571,7 +577,7 @@ class decay_model(pd_rxns):
         #gets the list of all monochromatic sources
         return [self.S_photon_cont, self.S_electron_cont, self.S_electron_cont]
 
-    #@eqx.filter_jit
+    @eqx.filter_jit
     def pdi_rates(self, T):
         """Return photon disintegration rates
 
@@ -638,9 +644,10 @@ class decay_model(pd_rxns):
         """
         (Tmin, Tmax) = self.temperature_range()
         NT = int(jnp.log10(Tmax/Tmin)*NT_pd)
+        NT = 10
 
         #logspaced temperature grid
-        Tr = jnp.logspace(jnp.log10(Tmin), jnp.log10(Tmax), 50)
+        Tr = jnp.logspace(jnp.log10(Tmin), jnp.log10(Tmax), NT)
 
         #rates = []
         #grid = Tr
